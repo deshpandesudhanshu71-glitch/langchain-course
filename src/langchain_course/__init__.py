@@ -3,12 +3,18 @@ import sys
 from dotenv import load_dotenv
 from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import PromptTemplate
+from langchain_core.tracers.langchain import wait_for_all_tracers
 from langchain_groq import ChatGroq
 
-load_dotenv()  # reads ANTHROPIC_API_KEY and GROQ_API_KEY from .env
+# reads the API keys and LANGSMITH_* settings from .env;
+# LANGSMITH_TRACING=true makes LangChain send every run to LangSmith automatically
+load_dotenv()
 
-# Pick which model to use: "groq" (free, GPT-OSS) or "anthropic" (Claude)
-PROVIDER = "groq"
+# Each model gets its own trace in LangSmith, named by the key below
+MODELS = {
+    "gpt-oss-groq": lambda: ChatGroq(model="openai/gpt-oss-120b"),
+    "claude-anthropic": lambda: ChatAnthropic(model="claude-haiku-5-5"),
+}
 
 # Windows terminals default to a limited encoding; UTF-8 lets us print any character
 sys.stdout.reconfigure(encoding="utf-8")
@@ -38,14 +44,19 @@ Musk's political activities, views, and statements have made him a polarizing fi
         input_variables=["information"], template=summary_template
     )
 
-    if PROVIDER == "groq":
-        llm = ChatGroq(model="openai/gpt-oss-120b")
-    else:
-        llm = ChatAnthropic(model="claude-haiku-5-5")
-    chain = summary_prompt_template | llm
+    for name, make_llm in MODELS.items():
+        chain = summary_prompt_template | make_llm()
 
-    response = chain.invoke(input={"information": information})
-    print(response.text)  # only the text answer, without any thinking/reasoning blocks
+        # run_name and tags label this trace in LangSmith so the two models are easy to tell apart
+        response = chain.invoke(
+            input={"information": information},
+            config={"run_name": f"summary-{name}", "tags": [name]},
+        )
+        print(f"\n===== {name} =====")
+        print(response.text)  # only the text answer, without any thinking/reasoning blocks
+
+    # traces upload in the background; wait so none are lost when the program exits
+    wait_for_all_tracers()
 
 
 if __name__ == "__main__":
