@@ -1,8 +1,17 @@
+import sys
+
 from dotenv import load_dotenv
 from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import PromptTemplate
+from langchain_groq import ChatGroq
 
-load_dotenv()  # reads ANTHROPIC_API_KEY from .env
+load_dotenv()  # reads ANTHROPIC_API_KEY and GROQ_API_KEY from .env
+
+# Pick which model to use: "groq" (free, GPT-OSS) or "anthropic" (Claude)
+PROVIDER = "groq"
+
+# Windows terminals default to a limited encoding; UTF-8 lets us print any character
+sys.stdout.reconfigure(encoding="utf-8")
 
 
 def main() -> None:
@@ -29,11 +38,14 @@ Musk's political activities, views, and statements have made him a polarizing fi
         input_variables=["information"], template=summary_template
     )
 
-    llm = ChatAnthropic(model="claude-haiku-5-5")
+    if PROVIDER == "groq":
+        llm = ChatGroq(model="openai/gpt-oss-120b")
+    else:
+        llm = ChatAnthropic(model="claude-haiku-5-5")
     chain = summary_prompt_template | llm
 
     response = chain.invoke(input={"information": information})
-    print(response.text)  # only the text answer, without Claude's thinking blocks
+    print(response.text)  # only the text answer, without any thinking/reasoning blocks
 
 
 if __name__ == "__main__":
